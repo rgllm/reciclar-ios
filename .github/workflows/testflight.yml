@@ -1,0 +1,266 @@
+name: TestFlight
+
+# Public repository: rgllm/reciclar-ios
+# App Store Connect upload when a tag matching testflight/* is pushed,
+# and from workflow_dispatch with the same version suffix.
+# Tag testflight/1.1.0-7 sets marketing version 1.1.0 and build number 7.
+# The checked-in project build number is left unchanged; xcodebuild overrides it.
+# Requires repository secrets:
+#   ASC_API_KEY_P8   raw AuthKey PEM (never printed)
+#   ASC_KEY_ID       App Store Connect API key id
+#   ASC_ISSUER_ID    App Store Connect issuer id
+# Optional, both or neither:
+#   DIST_CERT_P12       base64-encoded Apple Distribution .p12
+#   DIST_CERT_PASSWORD  password for that .p12
+# Cloud signing uses the Admin API key. Leave the certificate secrets unset
+# when no local distribution certificate is required.
+
+on:
+  push:
+    tags:
+      - "testflight/*"
+  workflow_dispatch:
+    inputs:
+      release:
+        description: "Marketing version and build, for example 1.1.0-7"
+        required: true
+        type: string
+
+concurrency:
+  group: testflight
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  upload:
+    name: Archive and upload
+    runs-on: macos-26
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode 26.6
+        run: |
+          sudo xcode-select -s /Applications/Xcode_26.6.app/Contents/Developer
+          if xcodebuild -checkFirstLaunchStatus >/dev/null 2>&1; then
+            :
+          else
+            sudo xcodebuild -runFirstLaunch
+          fi
+          xcodebuild -version
+          version="$(xcodebuild -version | awk 'NR==1 { print $2 }')"
+          case "$version" in
+            26.6|26.6.*) ;;
+            *)
+              echo "Expected Xcode 26.6, found ${version}."
+              exit 1
+              ;;
+          esac
+
+      - name: Install XcodeGen
+        run: |
+          if ! command -v xcodegen >/dev/null 2>&1; then
+            HOMEBREW_NO_AUTO_UPDATE=1 brew install xcodegen \
+              || env -u HOMEBREW_NO_AUTO_UPDATE brew install xcodegen
+          fi
+          xcodegen --version
+
+      - name: Generate the Xcode project
+        run: xcodegen generate --spec project.yml
+
+      - name: Read the version from the tag
+        id: release
+        env:
+          RELEASE_INPUT: ${{ inputs.release }}
+        run: |
+          python3 - << 'PY'
+          import os
+          import re
+          import sys
+
+          event = os.environ.get("GITHUB_EVENT_NAME", "")
+          if event == "workflow_dispatch":
+              suffix = os.environ.get("RELEASE_INPUT", "").strip()
+              if suffix.startswith("testflight/"):
+                  suffix = suffix[len("testflight/"):]
+          else:
+              ref = os.environ.get("GITHUB_REF_NAME", "")
+              prefix = "testflight/"
+              if not ref.startswith(prefix):
+                  sys.exit(f"Expected a testflight/* tag, got {ref}")
+              suffix = ref[len(prefix):]
+          match = re.fullmatch(r"(\d+(?:\.\d+)*)-(\d+)", suffix)
+          if not match:
+              sys.exit(
+                  "Release must look like 1.1.0-7 "
+                  "(marketing version, a hyphen, then the build number). "
+                  f"Got {suffix!r}."
+              )
+          marketing, build = match.group(1), match.group(2)
+          if int(build) < 1:
+              sys.exit("Build number must be at least 1.")
+          with open(os.environ["GITHUB_OUTPUT"], "a") as handle:
+              handle.write(f"marketing={marketing}\n")
+              handle.write(f"build={build}\n")
+          print(f"Marketing version {marketing}, build {build}.")
+          PY
+
+
+      - name: Write the App Store Connect API key
+        env:
+          ASC_API_KEY_P8: ${{ secrets.ASC_API_KEY_P8 }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: |
+          set +x
+          python3 - << 'PY'
+          import os
+          from pathlib import Path
+
+          material = os.environ.get("ASC_API_KEY_P8", "")
+          key_id = os.environ.get("ASC_KEY_ID", "")
+          issuer_id = os.environ.get("ASC_ISSUER_ID", "")
+          if not material or not key_id or not issuer_id:
+              raise SystemExit(
+                  "Missing App Store Connect API secrets "
+                  "(ASC_API_KEY_P8, ASC_KEY_ID, ASC_ISSUER_ID)."
+              )
+          path = Path(os.environ["RUNNER_TEMP"]) / f"AuthKey_{key_id}.p8"
+          text = material if material.endswith("\n") else material + "\n"
+          path.write_text(text)
+          path.chmod(0o600)
+          if path.stat().st_size == 0:
+              path.unlink(missing_ok=True)
+              raise SystemExit("App Store Connect API key file is empty.")
+          with open(os.environ["GITHUB_ENV"], "a") as handle:
+              handle.write(f"ASC_KEY_PATH={path}\n")
+          print(f"Wrote App Store Connect API key ({path.stat().st_size} bytes).")
+          PY
+
+      - name: Import distribution certificate
+        env:
+          DIST_CERT_P12: ${{ secrets.DIST_CERT_P12 }}
+          DIST_CERT_PASSWORD: ${{ secrets.DIST_CERT_PASSWORD }}
+        run: |
+          set +x
+          if [ -z "${DIST_CERT_P12}" ]; then
+            echo "DIST_CERT_P12 is unset. Skipping certificate import."
+            exit 0
+          fi
+          if [ -z "${DIST_CERT_PASSWORD}" ]; then
+            echo "DIST_CERT_P12 is set but DIST_CERT_PASSWORD is empty."
+            exit 1
+          fi
+
+          p12_path="${RUNNER_TEMP}/dist.p12"
+          keychain_path="${RUNNER_TEMP}/signing.keychain-db"
+          keychain_password="$(openssl rand -base64 32)"
+
+          if ! printf '%s' "$DIST_CERT_P12" | tr -d '[:space:]' | base64 --decode > "$p12_path"; then
+            rm -f "$p12_path"
+            echo "DIST_CERT_P12 is not valid base64."
+            exit 1
+          fi
+          signature="$(od -An -t x1 -N 1 "$p12_path" | tr -d '[:space:]')"
+          if [ "$signature" != "30" ]; then
+            rm -f "$p12_path"
+            echo "Decoded DIST_CERT_P12 is not a PKCS#12 file."
+            exit 1
+          fi
+          chmod 600 "$p12_path"
+
+          security create-keychain -p "$keychain_password" "$keychain_path"
+          security set-keychain-settings -lut 21600 "$keychain_path"
+          security unlock-keychain -p "$keychain_password" "$keychain_path"
+          security import "$p12_path" \
+            -k "$keychain_path" \
+            -P "$DIST_CERT_PASSWORD" \
+            -f pkcs12 \
+            -T /usr/bin/codesign \
+            -T /usr/bin/security
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: \
+            -s \
+            -k "$keychain_password" \
+            "$keychain_path"
+
+          keychains=("$keychain_path")
+          while IFS= read -r line; do
+            line="${line#*\"}"
+            line="${line%\"*}"
+            if [ -n "$line" ] && [ "$line" != "$keychain_path" ]; then
+              keychains+=("$line")
+            fi
+          done < <(security list-keychains -d user)
+          security list-keychains -d user -s "${keychains[@]}"
+          security default-keychain -s "$keychain_path"
+
+          rm -f "$p12_path"
+          echo "SIGNING_KEYCHAIN=${keychain_path}" >> "$GITHUB_ENV"
+          echo "Imported distribution certificate into a temporary keychain."
+
+      - name: Archive
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          MARKETING_VERSION: ${{ steps.release.outputs.marketing }}
+          CURRENT_PROJECT_VERSION: ${{ steps.release.outputs.build }}
+        run: |
+          set +x
+          xcodebuild archive \
+            -project Reciclar.xcodeproj \
+            -scheme Reciclar \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath "${RUNNER_TEMP}/Reciclar.xcarchive" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$ASC_KEY_PATH" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+            CODE_SIGN_STYLE=Automatic \
+            MARKETING_VERSION="$MARKETING_VERSION" \
+            CURRENT_PROJECT_VERSION="$CURRENT_PROJECT_VERSION"
+
+      - name: Export and upload
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: |
+          set +x
+          cat > "${RUNNER_TEMP}/ExportOptions.plist" << 'EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+          	<key>destination</key>
+          	<string>upload</string>
+          	<key>manageAppVersionAndBuildNumber</key>
+          	<false/>
+          	<key>method</key>
+          	<string>app-store-connect</string>
+          </dict>
+          </plist>
+          EOF
+          xcodebuild -exportArchive \
+            -archivePath "${RUNNER_TEMP}/Reciclar.xcarchive" \
+            -exportPath "${RUNNER_TEMP}/export" \
+            -exportOptionsPlist "${RUNNER_TEMP}/ExportOptions.plist" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$ASC_KEY_PATH" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+
+      - name: Remove signing material
+        if: always()
+        run: |
+          set +x
+          if [ -n "${SIGNING_KEYCHAIN:-}" ]; then
+            security delete-keychain "$SIGNING_KEYCHAIN" || true
+          fi
+          if [ -n "${ASC_KEY_PATH:-}" ]; then
+            rm -f "$ASC_KEY_PATH"
+          fi
+          rm -f "${RUNNER_TEMP}/dist.p12" "${RUNNER_TEMP}/ExportOptions.plist"
+          echo "Removed temporary signing material."

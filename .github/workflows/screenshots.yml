@@ -1,0 +1,215 @@
+name: Screenshots
+
+# Public repository: rgllm/reciclar-ios
+# App Store captures. A tag matching screenshots/* starts the run.
+# Release build, production API, largest iPhone simulator, pt-PT, Barcelos.
+
+on:
+  push:
+    tags:
+      - "screenshots/*"
+
+concurrency:
+  group: screenshots
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  capture:
+    name: Capture
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode 26.6
+        run: |
+          sudo xcode-select -s /Applications/Xcode_26.6.app/Contents/Developer
+          if xcodebuild -checkFirstLaunchStatus >/dev/null 2>&1; then
+            :
+          else
+            sudo xcodebuild -runFirstLaunch
+          fi
+          xcodebuild -version
+          version="$(xcodebuild -version | awk 'NR==1 { print $2 }')"
+          case "$version" in
+            26.6|26.6.*) ;;
+            *)
+              echo "Expected Xcode 26.6, found ${version}."
+              exit 1
+              ;;
+          esac
+
+      - name: Install XcodeGen
+        run: |
+          if ! command -v xcodegen >/dev/null 2>&1; then
+            HOMEBREW_NO_AUTO_UPDATE=1 brew install xcodegen \
+              || env -u HOMEBREW_NO_AUTO_UPDATE brew install xcodegen
+          fi
+          xcodegen --version
+
+      - name: Generate the Xcode project
+        run: xcodegen generate --spec project.yml
+
+      - name: Choose the 6.9-inch iPhone simulator
+        id: simulator
+        run: |
+          python3 -u << 'PY'
+          import json
+          import os
+          import subprocess
+
+          def parse_version(value):
+              parts = []
+              for piece in str(value).split("."):
+                  digits = ""
+                  for char in piece:
+                      if char.isdigit():
+                          digits += char
+                      else:
+                          break
+                  parts.append(int(digits) if digits else 0)
+              return tuple(parts)
+
+          listing = json.loads(subprocess.check_output(["xcrun", "simctl", "list", "-j", "devices", "available"], text=True))
+          best = None
+          for runtime, devices in listing.get("devices", {}).items():
+              for device in devices:
+                  if not device.get("isAvailable"):
+                      continue
+                  name = device.get("name") or ""
+                  if "iPhone" not in name:
+                      continue
+                  rank = 2 if "Pro Max" in name else 0
+                  version = runtime
+                  key = (rank, parse_version(version), name)
+                  if best is None or key > best[0]:
+                      best = (key, device.get("udid"), name, runtime)
+          if best is None:
+              raise SystemExit("No available iPhone simulator")
+          _, udid, name, runtime = best
+          if "Pro Max" not in name:
+              raise SystemExit(f"No iPhone Pro Max simulator. Newest iPhone is {name}.")
+          print(f"Simulator: {name} ({runtime}) {udid}")
+          with open(os.environ["GITHUB_OUTPUT"], "a") as handle:
+              handle.write(f"udid={udid}\n")
+              handle.write(f"name={name}\n")
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as handle:
+              handle.write(f"## Simulator\n\n{name} · {runtime}\n")
+          PY
+
+      - name: Boot in European Portuguese
+        run: |
+          set -euo pipefail
+          udid="$UDID"
+          xcrun simctl shutdown "$udid" || true
+          xcrun simctl erase "$udid"
+          xcrun simctl boot "$udid"
+          xcrun simctl bootstatus "$udid" -b
+          xcrun simctl spawn "$udid" defaults write NSGlobalDomain AppleLanguages -array pt-PT
+          xcrun simctl spawn "$udid" defaults write NSGlobalDomain AppleLocale -string pt_PT
+          xcrun simctl shutdown "$udid"
+          xcrun simctl boot "$udid"
+          xcrun simctl bootstatus "$udid" -b
+          xcrun simctl ui "$udid" appearance light
+          defaults write com.apple.iphonesimulator ConnectHardwareKeyboard -bool false
+        env:
+          UDID: ${{ steps.simulator.outputs.udid }}
+
+      - name: Set the status bar and Barcelos
+        run: |
+          set -euo pipefail
+          xcrun simctl status_bar "$UDID" override \
+            --time "9:41" \
+            --dataNetwork wifi \
+            --wifiMode active \
+            --wifiBars 3 \
+            --cellularMode active \
+            --cellularBars 4 \
+            --batteryState charged \
+            --batteryLevel 100
+          xcrun simctl location "$UDID" set 41.5388,-8.6151
+        env:
+          UDID: ${{ steps.simulator.outputs.udid }}
+
+      - name: Capture store screens
+        run: |
+          set -euo pipefail
+          mkdir -p screenshots
+          python3 -u .github/scripts/simctl_bridge.py > "${RUNNER_TEMP}/simctl-bridge.log" 2>&1 &
+          bridge_pid=$!
+          cleanup() {
+            echo "----- simctl bridge -----"
+            cat "${RUNNER_TEMP}/simctl-bridge.log" || true
+            kill "$bridge_pid" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+          ready=0
+          for _ in $(seq 1 50); do
+            if curl -sf http://127.0.0.1:8765/health >/dev/null; then
+              ready=1
+              break
+            fi
+            sleep 0.2
+          done
+          if [[ "$ready" != 1 ]]; then
+            echo "simctl bridge did not start"
+            cat "${RUNNER_TEMP}/simctl-bridge.log" || true
+            exit 1
+          fi
+          xcodebuild test \
+            -project Reciclar.xcodeproj \
+            -scheme ReciclarScreenshots \
+            -configuration Release \
+            -destination "platform=iOS Simulator,id=${UDID}" \
+            -only-testing:ReciclarCaptureTests \
+            -parallel-testing-enabled NO \
+            -test-timeouts-enabled NO \
+            -derivedDataPath "${RUNNER_TEMP}/DerivedData" \
+            -resultBundlePath "${RUNNER_TEMP}/CaptureResults" \
+            -skipPackagePluginValidation \
+            -skipMacroValidation \
+            -testLanguage pt-PT \
+            -testRegion PT \
+            CODE_SIGNING_ALLOWED=NO \
+            ONLY_ACTIVE_ARCH=YES \
+            COMPILER_INDEX_STORE_ENABLE=NO \
+            "TEST_RUNNER_SIMCTL_BRIDGE_URL=http://127.0.0.1:8765" \
+            "TEST_RUNNER_SCREENSHOT_DIR=${SCREENSHOT_DIR}"
+        env:
+          UDID: ${{ steps.simulator.outputs.udid }}
+          SCREENSHOT_DIR: ${{ github.workspace }}/screenshots
+
+      - name: Collect screenshots
+        if: always()
+        run: |
+          set -euo pipefail
+          mkdir -p screenshots
+          if compgen -G "/tmp/reciclar-shots/*.png" > /dev/null; then
+            cp -f /tmp/reciclar-shots/*.png screenshots/
+          fi
+          shopt -s nullglob
+          files=(screenshots/*.png)
+          if (( ${#files[@]} == 0 )); then
+            echo "No PNGs were written."
+            exit 0
+          fi
+          {
+            echo "## Screenshots"
+            echo
+            for file in "${files[@]}"; do
+              width="$(sips -g pixelWidth "$file" | awk '/pixelWidth/ { print $2 }')"
+              height="$(sips -g pixelHeight "$file" | awk '/pixelHeight/ { print $2 }')"
+              echo "- \`$(basename "$file")\` ${width}×${height}"
+            done
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reciclar-screenshots
+          path: screenshots/*.png
+          if-no-files-found: warn
