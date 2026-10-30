@@ -1,0 +1,82 @@
+name: Reciclar
+options:
+  bundleIdPrefix: com.rgllm
+  deploymentTarget:
+    iOS: "26.0"
+  developmentLanguage: pt-PT
+  createIntermediateGroups: true
+packages:
+  ReciclarCore:
+    path: Packages/ReciclarCore
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    IPHONEOS_DEPLOYMENT_TARGET: "26.0"
+    TARGETED_DEVICE_FAMILY: "1"
+    CURRENT_PROJECT_VERSION: 6
+    MARKETING_VERSION: "1.1.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+targets:
+  Reciclar:
+    type: application
+    platform: iOS
+    sources:
+      - path: Reciclar
+        excludes:
+          - Info.plist
+      - path: Reciclar/Info.plist
+        buildPhase: none
+        type: file
+    dependencies:
+      - package: ReciclarCore
+        product: ReciclarCore
+    settings:
+      base:
+        DEVELOPMENT_TEAM: F86KMMECSR
+        PRODUCT_BUNDLE_IDENTIFIER: com.rgllm.reciclar
+        PRODUCT_NAME: Reciclar
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_FILE: Reciclar/Info.plist
+        TARGETED_DEVICE_FAMILY: "1"
+        INFOPLIST_KEY_CFBundleDisplayName: Reciclar
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.utilities
+        INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
+        INFOPLIST_KEY_NSLocationWhenInUseUsageDescription: "A localização é usada para te mostrar no mapa e para confirmar que estás junto de um ecoponto quando dás um problema como resolvido. A pesquisa e o guia de reciclagem funcionam sem esta autorização."
+        INFOPLIST_KEY_ITSAppUsesNonExemptEncryption: false
+  ReciclarCaptureTests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: AppStore/CaptureTests
+    dependencies:
+      - target: Reciclar
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_FILE: AppStore/CaptureTests/Info.plist
+        PRODUCT_BUNDLE_IDENTIFIER: com.rgllm.reciclar.capturetests
+        TEST_TARGET_NAME: Reciclar
+        TARGETED_DEVICE_FAMILY: "1"
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: F86KMMECSR
+schemes:
+  Reciclar:
+    build:
+      targets:
+        Reciclar: all
+    run:
+      config: Debug
+  ReciclarScreenshots:
+    build:
+      targets:
+        Reciclar: all
+        ReciclarCaptureTests: [test]
+    run:
+      config: Release
+    test:
+      config: Release
+      gatherCoverageData: false
+      targets:
+        - name: ReciclarCaptureTests
+          parallelizable: false
+          randomExecutionOrder: false

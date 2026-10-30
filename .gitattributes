@@ -1,0 +1,3 @@
+# Generated Xcode project (source of truth is project.yml)
+Reciclar.xcodeproj/** linguist-generated=true
+*.pbxproj merge=union
