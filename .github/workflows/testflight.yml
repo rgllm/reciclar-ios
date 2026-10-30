@@ -116,27 +116,66 @@ jobs:
         run: |
           set +x
           python3 - << 'PY'
+          import base64
           import os
+          import re
           from pathlib import Path
 
           material = os.environ.get("ASC_API_KEY_P8", "")
-          key_id = os.environ.get("ASC_KEY_ID", "")
-          issuer_id = os.environ.get("ASC_ISSUER_ID", "")
+          key_id = os.environ.get("ASC_KEY_ID", "").strip()
+          issuer_id = os.environ.get("ASC_ISSUER_ID", "").strip()
           if not material or not key_id or not issuer_id:
               raise SystemExit(
                   "Missing App Store Connect API secrets "
                   "(ASC_API_KEY_P8, ASC_KEY_ID, ASC_ISSUER_ID)."
               )
+          # GitHub secret boxes often store the .p8 with CRLF, a trailing
+          # extra byte, literal "\n", or the whole document on one line.
+          # Rewrite it as a strict PKCS#8 PEM. Never print the key.
+          text = material.replace("\r\n", "\n").replace("\r", "\n")
+          if "\\n" in text:
+              text = text.replace("\\n", "\n")
+          text = text.strip().lstrip("\ufeff")
+          if len(text) >= 2 and text[0] == text[-1] and text[0] in "\"'":
+              text = text[1:-1].strip()
+          match = re.search(
+              r"(-----BEGIN [A-Z0-9 ]+-----)\s*(.*?)\s*(-----END [A-Z0-9 ]+-----)",
+              text,
+              re.S,
+          )
+          if not match:
+              raise SystemExit(
+                  "ASC_API_KEY_P8 is not a PEM document "
+                  "(expected BEGIN/END markers). "
+                  f"Stored length was {len(material)} characters."
+              )
+          begin, body, end = match.group(1), match.group(2), match.group(3)
+          if begin != "-----BEGIN PRIVATE KEY-----" or end != "-----END PRIVATE KEY-----":
+              raise SystemExit(
+                  "ASC_API_KEY_P8 must be a PKCS#8 AuthKey "
+                  "(-----BEGIN PRIVATE KEY-----). "
+                  f"Found labels {begin} / {end}."
+              )
+          compact = re.sub(r"\s+", "", body)
+          try:
+              decoded = base64.b64decode(compact, validate=True)
+          except Exception:
+              raise SystemExit(
+                  "ASC_API_KEY_P8 PEM body is not valid base64. "
+                  f"Body length after removing whitespace is {len(compact)}."
+              )
+          wrapped = "\n".join(compact[i:i + 64] for i in range(0, len(compact), 64))
+          pem = f"{begin}\n{wrapped}\n{end}\n"
           path = Path(os.environ["RUNNER_TEMP"]) / f"AuthKey_{key_id}.p8"
-          text = material if material.endswith("\n") else material + "\n"
-          path.write_text(text)
+          path.write_text(pem)
           path.chmod(0o600)
-          if path.stat().st_size == 0:
-              path.unlink(missing_ok=True)
-              raise SystemExit("App Store Connect API key file is empty.")
           with open(os.environ["GITHUB_ENV"], "a") as handle:
               handle.write(f"ASC_KEY_PATH={path}\n")
-          print(f"Wrote App Store Connect API key ({path.stat().st_size} bytes).")
+          print(
+              "Wrote App Store Connect API key "
+              f"({path.stat().st_size} bytes, {len(decoded)} decoded bytes, "
+              f"{pem.count(chr(10))} lines)."
+          )
           PY
 
       - name: Import distribution certificate
