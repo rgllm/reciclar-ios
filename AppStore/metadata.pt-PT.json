@@ -1,0 +1,12 @@
+{
+  "locale": "pt-PT",
+  "name": "Reciclar",
+  "subtitle": "Mapa e guia de reciclagem",
+  "promotionalText": "Encontra ecopontos, guarda os teus favoritos e consulta onde colocar vidro, papel, cartão e embalagens. Sem contas nem publicidade.",
+  "description": "Encontra ecopontos nas zonas cobertas pelos dados públicos de pontos de recolha e esclarece dúvidas de separação de resíduos.\n\n• Pesquisa lugares e moradas no mapa, mesmo sem autorizar a localização.\n• Filtra por materiais aceites e consulta os contentores de cada local.\n• Vê a última recolha e a ocupação quando a API disponibiliza dados válidos.\n• Guarda favoritos no iPhone e abre direções nos Mapas da Apple.\n• Consulta um guia de separação com fontes e indicações de preparação.\n• Consulta estatísticas da rede registada.\n\nA app é gratuita, sem publicidade, subscrições ou contas.\n\nA cobertura é limitada aos dados públicos de pontos de recolha e não abrange todo o território português. Os dados podem estar desatualizados. Uma leitura com espaço disponível não garante que um objeto caiba. As observações da comunidade são relatos de utilizadores.\n\nSuporte: geral@engino.pt",
+  "keywords": "reciclagem,ecoponto,vidro,papel,cartão,embalagens,resíduos,Portugal,mapa,separação",
+  "supportUrl": "https://ecopontos-api.rgllm.workers.dev/suporte",
+  "privacyPolicyUrl": "https://ecopontos-api.rgllm.workers.dev/privacidade",
+  "reviewNotes": "No account or login is required. Search for Barcelos, Portugal to inspect a covered area. Map browsing and the sorting guide work without location permission. The published data does not cover all of Portugal; the reviewer's current location may be outside coverage.\n\nFavourites are stored locally. Community observations, when visible, are structured choices only, with no free text, photos, chat, profiles or public user identity. Resolving an observation requires a recent accurate location fix within 100 metres, validated by the server. All other core features can be reviewed remotely.\n\nFill readings are hidden after 24 hours and may be absent from the API. Collection dates are distinct from fill readings. Community indicators expire after one week. Privacy and support are at the public URLs listed for App Store Connect.",
+  "signInRequired": false
+}

@@ -1,0 +1,90 @@
+{
+  "as_of": "2026-09-07T13:43:03.818Z",
+  "sync_token": "2026-09-07T13:43:03.818Z",
+  "is_complete_replacement": false,
+  "is_fixture_data": false,
+  "has_more": true,
+  "next_cursor": "page-2",
+  "removed_ids": ["gone-1"],
+  "community_events": [
+    {
+      "id": "00000000-0000-4000-8000-000000000001",
+      "ecoponto_id": "syn-loc-1",
+      "issue": "vandalized",
+      "kind": "report",
+      "server_timestamp": "2026-09-07T12:00:00.000Z"
+    }
+  ],
+  "locations": [
+    {
+      "id": "syn-loc-1",
+      "concessionaire_id": "OP-7",
+      "latitude": 10.25,
+      "longitude": 10.25,
+      "district": "DISTRITO-A",
+      "municipality": "MUNICIPIO-A",
+      "parish": "Freguesia Norte",
+      "locality": "Localidade Norte",
+      "address": "Rua Exemplar 10",
+      "location_description": "Ponto de recolha",
+      "provenance": { "label": "Operador Alfa" },
+      "updated_at": "2026-09-07T13:37:18.073Z",
+      "containers": [
+        {
+          "id": "C-2001",
+          "waste_type_id": "3",
+          "waste_name": "Embalagens de Vidro",
+          "color_token": "#339933",
+          "volume_litres": 2500,
+          "type_description": "Contentor 2500",
+          "code": "SYN-131",
+          "fill": {
+            "percent_full": 25,
+            "recorded_at": "2026-09-07T10:15:00.000Z",
+            "space_available": true
+          },
+          "last_collection_at": "2026-08-05T14:35:00.000Z"
+        },
+        {
+          "id": "C-2002",
+          "waste_type_id": "2",
+          "waste_name": "Mistura de embalagens",
+          "color_token": "#ffbb33",
+          "volume_litres": 2500,
+          "fill": {
+            "percent_full": 0,
+            "recorded_at": "2026-09-07T10:15:00.000Z",
+            "space_available": true
+          }
+        }
+      ],
+      "active_issues": []
+    },
+    {
+      "id": "bad",
+      "latitude": 200,
+      "longitude": -8.4,
+      "provenance": { "label": "Operador" },
+      "updated_at": "2026-09-07T13:37:18.073Z",
+      "containers": [],
+      "active_issues": []
+    },
+    {
+      "id": "syn-na",
+      "latitude": 10.5,
+      "longitude": 10.5,
+      "address": "n/a",
+      "provenance": { "label": "Operador Beta" },
+      "updated_at": "2026-09-07T13:37:18.073Z",
+      "containers": [
+        {
+          "id": "C-2003",
+          "waste_type_id": "16",
+          "waste_name": "Embalagens de Vidro",
+          "color_token": "#339933"
+        }
+      ],
+      "active_issues": []
+    }
+  ]
+}

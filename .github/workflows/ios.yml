@@ -1,0 +1,356 @@
+name: iOS
+
+# Public repository: rgllm/reciclar-ios
+# Builds and tests Reciclar on a GitHub-hosted macOS runner.
+# Runs on pull requests and on pushes to trunk.
+#
+# project.yml sets the iOS deployment target (26.0). macos-26 is the
+# hosted image that ships Xcode 26, whose iPhoneOS SDK can compile that
+# target. The select step still inspects every installed Xcode and uses the
+# newest one whose iPhoneOS SDK is at least the deployment target. If a
+# runner image has no such Xcode, the step records that, switches to the
+# newest Xcode that is installed, and the xcodebuild steps do not fail the job.
+
+on:
+  pull_request:
+  push:
+    branches:
+      - trunk
+
+concurrency:
+  group: ios-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build
+    runs-on: macos-26
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode
+        id: xcode
+        run: |
+          python3 -u << 'PY'
+          import os
+          import plistlib
+          import re
+          import subprocess
+          from pathlib import Path
+
+          def parse_version(value):
+              parts = []
+              for piece in str(value).split("."):
+                  digits = ""
+                  for char in piece:
+                      if char.isdigit():
+                          digits += char
+                      else:
+                          break
+                  parts.append(int(digits) if digits else 0)
+              return tuple(parts)
+
+          def version_ge(left, right):
+              width = max(len(left), len(right))
+              left = left + (0,) * (width - len(left))
+              right = right + (0,) * (width - len(right))
+              return left >= right
+
+          def deployment_target():
+              in_options = False
+              in_deployment = False
+              for line in Path("project.yml").read_text().splitlines():
+                  if re.match(r"^options:\s*$", line):
+                      in_options = True
+                      continue
+                  if in_options and re.match(r"^[A-Za-z]", line):
+                      break
+                  if in_options and re.match(r"^[ \t]+deploymentTarget:\s*$", line):
+                      in_deployment = True
+                      continue
+                  if not in_deployment:
+                      continue
+                  match = re.match(r'^[ \t]+iOS:\s*"?([0-9]+(?:\.[0-9]+)*)"?', line)
+                  if match:
+                      return match.group(1)
+                  if re.match(r"^[ \t]{0,4}\S", line):
+                      break
+              raise SystemExit("options.deploymentTarget.iOS is missing from project.yml")
+
+          def sdk_version(app):
+              sdk_root = app / "Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs"
+              if not sdk_root.is_dir():
+                  return None
+              found = []
+              for entry in sdk_root.iterdir():
+                  match = re.search(r"iPhoneOS([0-9]+(?:\.[0-9]+)*)\.sdk$", entry.name)
+                  if match:
+                      found.append(match.group(1))
+              if found:
+                  return max(found, key=parse_version)
+              return None
+
+          deployment = deployment_target()
+          deployment_version = parse_version(deployment)
+          candidates = []
+          for app in sorted(Path("/Applications").glob("Xcode*.app")):
+              if app.is_symlink():
+                  continue
+              info_path = app / "Contents/Info.plist"
+              version = None
+              if info_path.is_file():
+                  with info_path.open("rb") as handle:
+                      info = plistlib.load(handle)
+                  version = info.get("CFBundleShortVersionString")
+              if not version:
+                  match = re.search(r"Xcode_([0-9]+(?:\.[0-9]+)*)\.app$", app.name)
+                  version = match.group(1) if match else None
+              if not version:
+                  continue
+              candidates.append({
+                  "path": app,
+                  "version": str(version),
+                  "sdk": sdk_version(app),
+              })
+
+          if not candidates:
+              raise SystemExit("No Xcode.app installations found in /Applications")
+
+          candidates.sort(key=lambda item: parse_version(item["version"]))
+          eligible = [
+              item for item in candidates
+              if item["sdk"] and version_ge(parse_version(item["sdk"]), deployment_version)
+          ]
+          sufficient = bool(eligible)
+          chosen = eligible[-1] if eligible else candidates[-1]
+          developer_dir = chosen["path"] / "Contents/Developer"
+
+          print("Installed Xcode:")
+          for item in candidates:
+              marker = " selected" if item is chosen else ""
+              print(f"  {item['version']}\tiOS SDK {item['sdk'] or 'unknown'}\t{item['path']}{marker}")
+
+          note = (
+              f"Selected Xcode {chosen['version']} ({chosen['path']}), "
+              f"iOS SDK {chosen['sdk'] or 'unknown'}, "
+              f"deployment target {deployment} from project.yml."
+          )
+          if not sufficient:
+              note += (
+                  " No installed Xcode has an iOS SDK new enough for that target; "
+                  "using the newest available Xcode and leaving xcodebuild non-blocking."
+              )
+              print(f"::warning::{note}")
+          else:
+              print(f"::notice::{note}")
+
+          subprocess.check_call(["sudo", "xcode-select", "-s", str(developer_dir)])
+          if subprocess.call(["xcodebuild", "-checkFirstLaunchStatus"]) != 0:
+              subprocess.check_call(["sudo", "xcodebuild", "-runFirstLaunch"])
+          print(subprocess.check_output(["xcodebuild", "-version"], text=True), end="")
+
+          with open(os.environ["GITHUB_OUTPUT"], "a") as handle:
+              handle.write(f"version={chosen['version']}\n")
+              handle.write(f"sdk={chosen['sdk'] or ''}\n")
+              handle.write(f"deployment_target={deployment}\n")
+              handle.write(f"sufficient={'true' if sufficient else 'false'}\n")
+          with open(os.environ["GITHUB_ENV"], "a") as handle:
+              handle.write(f"DEVELOPER_DIR={developer_dir}\n")
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as handle:
+              handle.write("## Xcode\n\n")
+              handle.write(note + "\n\n")
+              handle.write("| Xcode | iOS SDK | Supports deployment target |\n| --- | --- | --- |\n")
+              for item in candidates:
+                  supports = "yes" if item in eligible else "no"
+                  label = f"**{item['version']}**" if item is chosen else item["version"]
+                  handle.write(f"| {label} | {item['sdk'] or '—'} | {supports} |\n")
+          PY
+
+      - name: Cache SourcePackages and DerivedData
+        uses: actions/cache@v4
+        with:
+          # SourcePackages is the SPM checkout inside this DerivedData directory.
+          path: |
+            .derivedData
+            ~/Library/Caches/org.swift.swiftpm
+            ~/Library/org.swift.swiftpm
+            Packages/ReciclarCore/.build
+          key: ios-${{ runner.os }}-${{ runner.arch }}-xcode-${{ steps.xcode.outputs.version }}-${{ hashFiles('**/*.swift', 'project.yml', 'Packages/ReciclarCore/Package.swift', 'Packages/ReciclarCore/Package.resolved') }}
+          restore-keys: |
+            ios-${{ runner.os }}-${{ runner.arch }}-xcode-${{ steps.xcode.outputs.version }}-
+
+      - name: Install XcodeGen
+        run: |
+          if ! command -v xcodegen >/dev/null 2>&1; then
+            HOMEBREW_NO_AUTO_UPDATE=1 brew install xcodegen \
+              || env -u HOMEBREW_NO_AUTO_UPDATE brew install xcodegen
+          fi
+          xcodegen --version
+
+      - name: Generate the Xcode project
+        run: xcodegen generate
+
+      - name: Run ReciclarCore checks
+        run: |
+          swift build --package-path Packages/ReciclarCore
+          swift run --package-path Packages/ReciclarCore ReciclarCoreChecks
+
+      - name: Choose an iOS Simulator
+        id: simulator
+        run: |
+          python3 -u << 'PY'
+          import json
+          import os
+          import re
+          import subprocess
+
+          def parse_version(value):
+              parts = []
+              for piece in str(value).split("."):
+                  digits = ""
+                  for char in piece:
+                      if char.isdigit():
+                          digits += char
+                      else:
+                          break
+                  parts.append(int(digits) if digits else 0)
+              return tuple(parts)
+
+          def version_ge(left, right):
+              width = max(len(left), len(right))
+              left = left + (0,) * (width - len(left))
+              right = right + (0,) * (width - len(right))
+              return left >= right
+
+          deployment = parse_version(os.environ["DEPLOYMENT_TARGET"])
+          listing = json.loads(subprocess.check_output(["xcrun", "simctl", "list", "-j"], text=True))
+          runtime_versions = {}
+          for runtime in listing.get("runtimes", []):
+              if runtime.get("platform") != "iOS" or not runtime.get("isAvailable"):
+                  continue
+              version = runtime.get("version")
+              if not version:
+                  continue
+              for key in (runtime.get("identifier"), runtime.get("name")):
+                  if key:
+                      runtime_versions[key] = version
+
+          best = None
+          for runtime_key, devices in listing.get("devices", {}).items():
+              version = runtime_versions.get(runtime_key)
+              if version is None or not version_ge(parse_version(version), deployment):
+                  continue
+              for device in devices:
+                  if not device.get("isAvailable"):
+                      continue
+                  name = device.get("name") or ""
+                  udid = device.get("udid") or ""
+                  if "iPhone" not in name or not udid:
+                      continue
+                  # Prefer the same phone used for local builds when several exist.
+                  preference = 1 if name == "iPhone 17" else 0
+                  rank = (parse_version(version), preference)
+                  if best is None or rank > best[0]:
+                      best = (rank, name, version, udid)
+
+          if best is None:
+              destination = "generic/platform=iOS Simulator"
+              detail = (
+                  "No available iPhone simulator runtime is at least the deployment target. "
+                  "Building for the generic iOS Simulator destination."
+              )
+              print(f"::warning::{detail}")
+          else:
+              _, name, version, udid = best
+              destination = f"platform=iOS Simulator,id={udid}"
+              detail = f"One simulator: {name} · iOS {version} · {udid}"
+              print(detail)
+
+          with open(os.environ["GITHUB_OUTPUT"], "a") as handle:
+              handle.write(f"destination={destination}\n")
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as handle:
+              handle.write("\n## Simulator\n\n")
+              handle.write(detail + "\n")
+          PY
+        env:
+          DEPLOYMENT_TARGET: ${{ steps.xcode.outputs.deployment_target }}
+
+      - name: Detect test targets
+        id: tests
+        run: |
+          python3 -u << 'PY'
+          import os
+          import re
+          from pathlib import Path
+
+          text = Path("Reciclar.xcodeproj/project.pbxproj").read_text()
+          unit = []
+          ui = []
+          for chunk in text.split("isa = PBXNativeTarget;")[1:]:
+              name_match = re.search(r"\bname = ([^;]+);", chunk)
+              product_match = re.search(r'productType = "([^"]+)"', chunk)
+              if not name_match or not product_match:
+                  continue
+              name = name_match.group(1).strip().strip('"')
+              product = product_match.group(1)
+              if product == "com.apple.product-type.bundle.unit-test":
+                  unit.append(name)
+              elif product == "com.apple.product-type.bundle.ui-testing":
+                  ui.append(name)
+          flags = " ".join(f"-only-testing:{name}" for name in unit)
+          with open(os.environ["GITHUB_OUTPUT"], "a") as handle:
+              handle.write(f"has_tests={'true' if unit else 'false'}\n")
+              handle.write(f"only_testing={flags}\n")
+          if unit:
+              print("Unit-test targets: " + ", ".join(unit))
+          else:
+              print("No unit-test target. Skipping xcodebuild test.")
+          if ui:
+              print("Not running UI targets in this job: " + ", ".join(ui))
+          PY
+
+      - name: Build
+        id: build
+        if: steps.tests.outputs.has_tests != 'true'
+        continue-on-error: ${{ steps.xcode.outputs.sufficient == 'false' }}
+        run: |
+          xcodebuild build \
+            -project Reciclar.xcodeproj \
+            -scheme Reciclar \
+            -configuration Debug \
+            -destination "$DESTINATION" \
+            -derivedDataPath "${GITHUB_WORKSPACE}/.derivedData" \
+            -skipPackagePluginValidation \
+            -skipMacroValidation \
+            CODE_SIGNING_ALLOWED=NO \
+            ONLY_ACTIVE_ARCH=YES \
+            COMPILER_INDEX_STORE_ENABLE=NO
+        env:
+          DESTINATION: ${{ steps.simulator.outputs.destination }}
+
+      - name: Test
+        if: steps.tests.outputs.has_tests == 'true'
+        continue-on-error: ${{ steps.xcode.outputs.sufficient == 'false' }}
+        run: |
+          xcodebuild test \
+            -project Reciclar.xcodeproj \
+            -scheme Reciclar \
+            -configuration Debug \
+            -destination "$DESTINATION" \
+            -derivedDataPath "${GITHUB_WORKSPACE}/.derivedData" \
+            -parallel-testing-enabled NO \
+            -maximum-concurrent-test-simulator-destinations 1 \
+            -maximum-parallel-testing-workers 1 \
+            -skipPackagePluginValidation \
+            -skipMacroValidation \
+            $ONLY_TESTING \
+            CODE_SIGNING_ALLOWED=NO \
+            ONLY_ACTIVE_ARCH=YES \
+            COMPILER_INDEX_STORE_ENABLE=NO
+        env:
+          DESTINATION: ${{ steps.simulator.outputs.destination }}
+          ONLY_TESTING: ${{ steps.tests.outputs.only_testing }}

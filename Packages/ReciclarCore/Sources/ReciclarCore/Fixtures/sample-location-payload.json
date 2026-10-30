@@ -1,0 +1,63 @@
+{
+  "idlocal": "SYN-1001",
+  "id_concessionaire": "OP-7",
+  "latitude": 10.0,
+  "longitude": 10.0,
+  "distrito": "Distrito Exemplo",
+  "concelho": "Concelho Exemplo",
+  "freguesia": "Freguesia Norte",
+  "localidade": "Vila Norte",
+  "localaddress": "",
+  "localdescription": "",
+  "description": "",
+  "ltdescription": "",
+  "localgroups": "Grupo A, Grupo A, Grupo A",
+  "branches": "",
+  "Containers": [
+    {
+      "idcontainer_sensor": "C-1001",
+      "idwaste_type": "2",
+      "waste_desc": "Embalagens de Vidro",
+      "waste_color": "Verde",
+      "description": "",
+      "codeler": "SYN-0",
+      "containertype_volume": "2500 L",
+      "containertype_desc": "Contentor",
+      "lastreadingvolume": "25 %",
+      "timeoflastreading_ts": "11/08/2026 10:15",
+      "timeoflastcollection_ts": "10/08/2026 08:00",
+      "timeoflastwashing_ts": "01/08/2026 09:00",
+      "associatedtime_ts": "11/08/2026 10:15"
+    },
+    {
+      "idcontainer_sensor": "C-1002",
+      "idwaste_type": "4",
+      "waste_desc": "Mistura de embalagens",
+      "waste_color": "Amarelo",
+      "description": "",
+      "codeler": "SYN-0",
+      "containertype_volume": "2500 L",
+      "containertype_desc": "Contentor",
+      "lastreadingvolume": "80 %",
+      "timeoflastreading_ts": "11/08/2026 10:15",
+      "timeoflastcollection_ts": "10/08/2026 08:00",
+      "timeoflastwashing_ts": "01/08/2026 09:00",
+      "associatedtime_ts": "11/08/2026 10:15"
+    },
+    {
+      "idcontainer_sensor": "C-1003",
+      "idwaste_type": "3",
+      "waste_desc": "Papel e cartão",
+      "waste_color": "Azul",
+      "description": "",
+      "codeler": "SYN-0",
+      "containertype_volume": "2500 L",
+      "containertype_desc": "Contentor",
+      "lastreadingvolume": "not-a-number",
+      "timeoflastreading_ts": "11/08/2026 10:15",
+      "timeoflastcollection_ts": "10/08/2026 08:00",
+      "timeoflastwashing_ts": "01/08/2026 09:00",
+      "associatedtime_ts": "11/08/2026 10:15"
+    }
+  ]
+}
