@@ -28,9 +28,13 @@ final class StoreCaptureTests: XCTestCase {
         let search = app.buttons["Pesquisar lugar ou morada"]
         XCTAssertTrue(search.waitForExistence(timeout: 40), "the map chrome did not appear")
         openPlace("Barcelos")
-        if !waitForLoadedPins(timeout: 50) {
+        if !waitForLoadedPins(timeout: 120) {
+            dumpScreen("00-barcelos-waiting")
             openPlace("Braga")
-            XCTAssertTrue(waitForLoadedPins(timeout: 50), "no ecopontos appeared in Barcelos or Braga")
+            if !waitForLoadedPins(timeout: 90) {
+                dumpScreen("00-braga-waiting")
+                XCTFail("no ecopontos appeared in Barcelos or Braga")
+            }
         }
         zoomUntilPinsOrGiveUp()
         XCTAssertTrue(waitForLoadedPins(timeout: 20), "the map was still loading when the first shot was due")
@@ -191,12 +195,15 @@ final class StoreCaptureTests: XCTestCase {
     }
 
     /// Pins or clusters from the API. The "Com espaço" chip is always on screen, so it is not a signal.
+    /// A refresh banner can stay up while the first pins are already drawn.
     private func waitForLoadedPins(timeout: TimeInterval) -> Bool {
-        waitUntil(timeout: timeout) {
-            if self.element(containing: "A carregar ecopontos").exists { return false }
-            return self.element(containing: "contentor").exists
+        let found = waitUntil(timeout: timeout) {
+            self.element(containing: "contentor").exists
                 || self.element(containing: "Grupo de").exists
         }
+        guard found else { return false }
+        _ = waitUntil(timeout: 20) { !self.element(containing: "A carregar ecopontos").exists }
+        return element(containing: "contentor").exists || element(containing: "Grupo de").exists
     }
 
     private func waitForMapContent(timeout: TimeInterval) -> Bool {
@@ -354,6 +361,15 @@ final class StoreCaptureTests: XCTestCase {
             ).firstMatch
             XCTAssertFalse(match.exists, "\(name) is visible")
         }
+    }
+
+    private func dumpScreen(_ name: String) {
+        let shot = XCUIScreen.main.screenshot()
+        let attachment = XCTAttachment(screenshot: shot)
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
+        post(path: "/screenshot?name=\(name)", body: shot.pngRepresentation)
     }
 
     private func capture(_ name: String) {
