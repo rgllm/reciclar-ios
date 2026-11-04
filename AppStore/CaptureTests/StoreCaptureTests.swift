@@ -218,6 +218,23 @@ final class StoreCaptureTests: XCTestCase {
         }
     }
 
+    /// The space shot scrolls the bar until "Com espaço" is visible, which parks "Mais filtros" off screen.
+    private func scrollFilterBarToStart() {
+        let filters = app.descendants(matching: .any)["Filtros de resíduos"]
+        let bar = filters.exists ? filters : app.scrollViews.element(boundBy: 0)
+        guard bar.exists else { return }
+        for _ in 0..<2 {
+            let start = bar.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.5))
+            let end = bar.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.5))
+            start.press(forDuration: 0.05, thenDragTo: end)
+        }
+    }
+
+    private func tapMoreFilters() {
+        scrollFilterBarToStart()
+        app.buttons["Mais filtros"].tap()
+    }
+
     /// The space chip sits past the category chips. Dragging the bar does not ask for a hit point.
     private func revealSpaceChip() {
         let filters = app.descendants(matching: .any)["Filtros de resíduos"]
@@ -229,7 +246,7 @@ final class StoreCaptureTests: XCTestCase {
     }
 
     private func openFirstEcoponto() {
-        app.buttons["Mais filtros"].tap()
+        tapMoreFilters()
         let list = app.buttons["Lista de ecopontos visíveis"]
         if !list.waitForExistence(timeout: 8) { app.swipeUp() }
         XCTAssertTrue(list.waitForExistence(timeout: 10))
@@ -303,7 +320,7 @@ final class StoreCaptureTests: XCTestCase {
             clear.tap()
             return
         }
-        app.buttons["Mais filtros"].tap()
+        tapMoreFilters()
         _ = app.navigationBars["Filtros"].waitForExistence(timeout: 8)
         let sheetClear = app.buttons["Limpar filtros"]
         var attempts = 0
