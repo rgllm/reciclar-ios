@@ -1,15 +1,22 @@
 # Reciclar — App Store screenshots
 
-Five unedited screenshots of the running iOS app, using production data and Portuguese copy. Captured on an iPhone 17 Pro Max simulator (iOS 26.5). Each PNG is portrait, 1320 × 2868 pixels, without an alpha channel, for the App Store Connect 6.9-inch iPhone screenshot slot.
+Eight unedited screenshots of the running iOS app, Portuguese (pt-PT). Captured on the largest iPhone simulator (6.9-inch, 1320 × 2868, no alpha) by `.github/workflows/screenshots.yml`.
+
+Locations and statistics come from the production API. For these captures only, the app is launched with `-StoreScreenshots`: the operator line is blank, and any container without a usable reading gets a recent capture reading so the picture never shows "Sem leitura". Real users do not get that overlay.
+
+The workflow saves PNGs. It does not draw marketing captions. The caption for `02-espaco.png` is **Vê que ecopontos têm espaço**.
 
 Upload in this order:
 
-1. `pt-PT/iphone-6.9/01-mapa.png` — map around Barcelos.
-2. `pt-PT/iphone-6.9/02-ecoponto.png` — ecoponto details and collection information.
-3. `pt-PT/iphone-6.9/03-reciclagem.png` — recycling guide.
-4. `pt-PT/iphone-6.9/04-separacao.png` — glass jar disposal instructions.
-5. `pt-PT/iphone-6.9/05-estatisticas.png` — catalog statistics.
+1. `01-mapa.png` — map around Barcelos.
+2. `02-espaco.png` — Barcelos filtered to ecopontos with space. Caption: "Vê que ecopontos têm espaço".
+3. `03-ecoponto.png` — ecoponto details, collection information and report button, without the operator line.
+4. `04-reportar.png` — the two report choices.
+5. `05-guia.png` — recycling guide for a glass-varnish jar, including its published sources.
+6. `06-guia-mapa.png` — map filtered to glass.
+7. `07-estatisticas.png` — catalog statistics.
+8. `08-sem-cobertura.png` — an area with no ecopontos.
 
-The capture tests are in `../CaptureTests/StoreCaptureTests.swift`. They use the real `com.rgllm.reciclar` application and do not submit reports. A separate temporary Xcode project was used to avoid changing the app's signing and release settings. The status bar is set to 09:41 and a full battery. Collection dates and measurements come from the API; no values were fabricated.
+The capture test is `../CaptureTests/StoreCaptureTests.swift`. It uses `com.rgllm.reciclar`, does not submit reports, and keeps the status bar at 09:41 with a full battery. The map is centred on Barcelos (41.5388, -8.6151).
 
 Source: [Apple screenshot specifications](https://developer.apple.com/help/app-store-connect/reference/app-information/screenshot-specifications/).

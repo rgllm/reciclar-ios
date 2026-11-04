@@ -13,7 +13,13 @@ struct AppDependencies: Sendable {
         let support = supportDirectory(fileManager: fileManager)
         LegacyInstallationIdentity.deletePersistedValues()
         let configuration = ReciclarAPIConfiguration(baseURL: resolvedBaseURL)
-        let client = HTTPReciclarClient(configuration: configuration)
+        let http = HTTPReciclarClient(configuration: configuration)
+        let client: any ReciclarAPIClient
+        if ProcessInfo.processInfo.arguments.contains("-StoreScreenshots") {
+            client = StoreCaptureAPIClient(upstream: http, clock: clock)
+        } else {
+            client = http
+        }
         return AppDependencies(
             repository: AreaRepository(
                 client: client,

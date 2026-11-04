@@ -782,6 +782,12 @@ enum ReciclarCoreChecks {
             FileHandle.standardError.write(Data("FAIL old cache \(error)\n".utf8))
         }
 
+        await runStoreCaptureChecks(
+            now: now,
+            expect: { condition, message in expect(condition, message) },
+            failures: &failures
+        )
+
         if failures > 0 {
             FileHandle.standardError.write(Data("\(failures) checks failed\n".utf8))
             exit(1)
@@ -1315,6 +1321,125 @@ func expectUnlinkedSubmission(
     for name in names {
         let identifiesDevice = name.contains("install") || name.contains("device") || name.contains("vendor") || name.contains("reporter")
         expect(!identifiesDevice, "\(label) has no identity header \(name)")
+    }
+}
+
+@MainActor
+func runStoreCaptureChecks(
+    now: Date,
+    expect: (Bool, String) -> Void,
+    failures: inout Int
+) async {
+    let barcelos = Coordinate(latitude: 41.5388, longitude: -8.6151)
+    let bounds = GeographicBounds(center: barcelos, latitudeDelta: 0.2, longitudeDelta: 0.2)
+    let stale = FillReading(percentFull: 10, recordedAt: now.addingTimeInterval(-(24 * 60 * 60 + 5)))
+    let fresh = FillReading(percentFull: 44, recordedAt: now.addingTimeInterval(-30 * 60))
+
+    func place(_ id: String, reading: FillReading?, containers: Int = 1) -> Ecoponto {
+        Ecoponto(
+            id: id,
+            coordinate: barcelos,
+            municipality: "Barcelos",
+            locality: "Barcelos",
+            containers: (0..<containers).map { index in
+                Container(id: "\(id)-\(index)", category: .sampleGlass, fillReading: reading)
+            },
+            provenance: DataProvenance(label: "Linha da Reciclagem / Resulima")
+        )
+    }
+
+    var fullID: String?
+    var spaceID: String?
+    for number in 0..<400 {
+        let id = "loc-\(number)"
+        let percent = StoreCaptureFixtures.percent(locationID: id, containerIndex: 0)
+        if percent >= 90, fullID == nil { fullID = id }
+        if percent < 90, spaceID == nil { spaceID = id }
+        if fullID != nil, spaceID != nil { break }
+    }
+    expect(fullID != nil && spaceID != nil, "capture fixtures include a full location and one with space")
+    guard let fullID, let spaceID else { return }
+
+    expect(
+        StoreCaptureFixtures.percent(locationID: "barcelos-capture", containerIndex: 0) == 66,
+        "capture percent for barcelos-capture is stable"
+    )
+    expect(
+        StoreCaptureFixtures.percent(locationID: "barcelos-capture", containerIndex: 1) == 69,
+        "the next container at barcelos-capture stays under 90"
+    )
+    expect(
+        (0..<4).allSatisfy { StoreCaptureFixtures.percent(locationID: fullID, containerIndex: $0) >= 90 },
+        "a full capture location stays full on every container"
+    )
+    expect(
+        (0..<4).allSatisfy { StoreCaptureFixtures.percent(locationID: spaceID, containerIndex: $0) < 90 },
+        "a space capture location stays under 90 on every container"
+    )
+
+    let missing = place("missing-reading", reading: nil, containers: 2)
+    let stalePlace = place("stale-reading", reading: stale)
+    let freshPlace = place("fresh-reading", reading: fresh)
+    let mock = MockReciclarClient(clock: { now })
+    let page = LocationSyncPage(
+        locations: [missing, stalePlace, freshPlace],
+        communityEvents: [],
+        isCompleteReplacement: false,
+        isFixtureData: false,
+        syncToken: "live-token"
+    )
+    await mock.setPages([page])
+    let client = StoreCaptureAPIClient(upstream: mock, clock: { now })
+
+    do {
+        let area = try await client.fetchArea(bounds: bounds, cursor: nil)
+        expect(!area.page.isFixtureData, "capture overlay does not mark the page as fixture data")
+        expect(area.page.syncToken == "live-token", "capture overlay keeps the upstream page")
+        let byID = Dictionary(uniqueKeysWithValues: area.page.locations.map { ($0.id, $0) })
+        expect(byID.count == 3, "capture overlay keeps every location")
+
+        let hidden = byID["missing-reading"]
+        expect(hidden?.provenance.userFacingLabel == nil, "blank capture provenance is hidden")
+        expect(hidden?.provenance.label.isEmpty == true, "capture provenance label is empty")
+        expect(hidden?.containers.count == 2, "capture overlay keeps both containers")
+        expect(
+            hidden?.containers.compactMap(\.fillReading?.percentFull) == [76, 79],
+            "missing-reading containers use the capture percents"
+        )
+        for container in hidden?.containers ?? [] {
+            guard case let .usable(percent, recordedAt) = FillReadingPolicy.evidence(from: container.fillReading, at: now) else {
+                expect(false, "missing container gained a usable reading")
+                continue
+            }
+            expect(percent < 100, "capture reading stays a percentage")
+            let age = now.timeIntervalSince(recordedAt)
+            expect(abs(age - StoreCaptureFixtures.readingAge) < 0.001, "capture reading is one hour old")
+        }
+
+        let replaced = byID["stale-reading"]?.containers.first
+        expect(replaced?.fillReading?.percentFull != 10, "stale capture reading is replaced")
+        expect(
+            FillReadingPolicy.evidence(from: replaced?.fillReading, at: now) != .none,
+            "replaced capture reading is usable"
+        )
+
+        let kept = byID["fresh-reading"]?.containers.first
+        expect(kept?.fillReading?.percentFull == 44, "a recent upstream reading is kept")
+        expect(byID["fresh-reading"]?.provenance.userFacingLabel == nil, "kept readings still hide the operator")
+
+        let tile = SlippyMapTiles.tile(containing: barcelos, zoom: MapTilePolicy.zoom)
+        let tilePage = try await client.fetchTile(tile, cursor: nil)
+        expect(
+            tilePage.page.locations.allSatisfy { $0.provenance.userFacingLabel == nil },
+            "tile capture hides the operator"
+        )
+
+        let stats = try await client.fetchStats()
+        expect(stats.locations.total == 12_480, "capture client leaves statistics on the upstream")
+        expect(stats.isFixtureData, "capture client does not relabel statistics")
+    } catch {
+        failures += 1
+        FileHandle.standardError.write(Data("FAIL store capture \(error)\n".utf8))
     }
 }
 
