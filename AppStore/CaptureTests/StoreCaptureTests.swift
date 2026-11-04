@@ -3,14 +3,17 @@ import XCTest
 
 /// Release captures of the installed app against the production API.
 /// Community reports are opened and never submitted.
-/// Not `@MainActor`: XCTest calls `setUp` as a nonisolated override, and a
-/// main-actor class makes those calls a strict-concurrency error.
+@MainActor
 final class StoreCaptureTests: XCTestCase {
     private let app = XCUIApplication()
 
+    /// XCTest calls this override off the main actor, so it cannot touch the app.
     override func setUp() {
         super.setUp()
         continueAfterFailure = false
+    }
+
+    func testStoreScreens() {
         grantLocation()
         setLocation(latitude: 41.5388, longitude: -8.6151)
         app.launchArguments = [
@@ -21,9 +24,7 @@ final class StoreCaptureTests: XCTestCase {
         app.launch()
         acceptSystemPrompts()
         overrideStatusBar()
-    }
 
-    func testStoreScreens() {
         let search = app.buttons["Pesquisar lugar ou morada"]
         XCTAssertTrue(search.waitForExistence(timeout: 40), "the map chrome did not appear")
         openPlace("Barcelos")
