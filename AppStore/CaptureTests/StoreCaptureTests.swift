@@ -219,30 +219,23 @@ final class StoreCaptureTests: XCTestCase {
     }
 
     /// The space shot scrolls the bar until "Com espaço" is visible, which parks "Mais filtros" off screen.
-    private func scrollFilterBarToStart() {
-        let filters = app.descendants(matching: .any)["Filtros de resíduos"]
-        let bar = filters.exists ? filters : app.scrollViews.element(boundBy: 0)
-        guard bar.exists else { return }
-        for _ in 0..<2 {
-            let start = bar.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.5))
-            let end = bar.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.5))
-            start.press(forDuration: 0.05, thenDragTo: end)
-        }
+    private func dragFilterBar(showingStart: Bool) {
+        let bar = app.scrollViews.firstMatch
+        guard bar.waitForExistence(timeout: 2) else { return }
+        let start = bar.coordinate(withNormalizedOffset: CGVector(dx: showingStart ? 0.15 : 0.85, dy: 0.5))
+        let end = bar.coordinate(withNormalizedOffset: CGVector(dx: showingStart ? 0.95 : 0.15, dy: 0.5))
+        start.press(forDuration: 0.05, thenDragTo: end)
     }
 
     private func tapMoreFilters() {
-        scrollFilterBarToStart()
+        dragFilterBar(showingStart: true)
+        dragFilterBar(showingStart: true)
         app.buttons["Mais filtros"].tap()
     }
 
     /// The space chip sits past the category chips. Dragging the bar does not ask for a hit point.
     private func revealSpaceChip() {
-        let filters = app.descendants(matching: .any)["Filtros de resíduos"]
-        let bar = filters.exists ? filters : app.scrollViews.element(boundBy: 0)
-        guard bar.exists else { return }
-        let start = bar.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.5))
-        let end = bar.coordinate(withNormalizedOffset: CGVector(dx: 0.15, dy: 0.5))
-        start.press(forDuration: 0.05, thenDragTo: end)
+        dragFilterBar(showingStart: false)
     }
 
     private func openFirstEcoponto() {
