@@ -36,7 +36,6 @@ final class StoreCaptureTests: XCTestCase {
                 XCTFail("no ecopontos appeared in Barcelos or Braga")
             }
         }
-        zoomUntilPinsOrGiveUp()
         XCTAssertTrue(waitForLoadedPins(timeout: 20), "the map was still loading when the first shot was due")
         settle(2)
         overrideStatusBar()
@@ -114,10 +113,9 @@ final class StoreCaptureTests: XCTestCase {
     private func showAvailableSpace() {
         setSpaceFilter(enabled: true)
         _ = waitUntil(timeout: 20) { !self.element(containing: "A carregar ecopontos").exists }
-        if !waitForSpacePin(timeout: 15) {
-            zoomUntilPinsOrGiveUp()
-        }
-        XCTAssertTrue(waitForSpacePin(timeout: 25), "no pin with available space was visible in Barcelos")
+        zoomUntilPinsOrGiveUp()
+        revealSpaceChip()
+        XCTAssertTrue(waitForSpacePin(timeout: 20), "no pin with available space was visible in Barcelos")
     }
 
     private func hideAvailableSpace() {
@@ -211,16 +209,22 @@ final class StoreCaptureTests: XCTestCase {
     }
 
     private func zoomUntilPinsOrGiveUp() {
-        for _ in 0..<3 {
+        for _ in 0..<6 {
             if element(containing: "contentor").exists { return }
-            if element(containing: "A carregar ecopontos").exists {
-                _ = waitUntil(timeout: 10) { !self.element(containing: "A carregar ecopontos").exists }
-                continue
-            }
             let map = app.maps.firstMatch
-            if map.exists { map.pinch(withScale: 1.5, velocity: 0.6) }
-            settle(2)
+            if map.exists { map.pinch(withScale: 2.0, velocity: 1) }
+            settle(1.5)
         }
+    }
+
+    /// The space chip sits past the category chips. Dragging the bar does not ask for a hit point.
+    private func revealSpaceChip() {
+        let filters = app.descendants(matching: .any)["Filtros de resíduos"]
+        let bar = filters.exists ? filters : app.scrollViews.element(boundBy: 0)
+        guard bar.exists else { return }
+        let start = bar.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.5))
+        let end = bar.coordinate(withNormalizedOffset: CGVector(dx: 0.15, dy: 0.5))
+        start.press(forDuration: 0.05, thenDragTo: end)
     }
 
     private func openFirstEcoponto() {
@@ -293,15 +297,22 @@ final class StoreCaptureTests: XCTestCase {
 
     private func clearFiltersIfNeeded() {
         let clear = app.buttons["Limpar"]
-        if clear.exists, clear.isHittable {
+        guard clear.exists else { return }
+        if clear.isHittable {
             clear.tap()
             return
         }
-        guard clear.exists else { return }
         app.buttons["Mais filtros"].tap()
+        _ = app.navigationBars["Filtros"].waitForExistence(timeout: 8)
         let sheetClear = app.buttons["Limpar filtros"]
-        XCTAssertTrue(sheetClear.waitForExistence(timeout: 8))
-        sheetClear.tap()
+        var attempts = 0
+        while !sheetClear.exists, attempts < 5 {
+            app.swipeUp()
+            attempts += 1
+        }
+        if sheetClear.waitForExistence(timeout: 3) {
+            sheetClear.tap()
+        }
         let close = app.buttons["Fechar"]
         if close.waitForExistence(timeout: 3) { close.tap() }
     }
