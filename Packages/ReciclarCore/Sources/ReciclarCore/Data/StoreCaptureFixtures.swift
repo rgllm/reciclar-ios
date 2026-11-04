@@ -9,21 +9,15 @@ public enum StoreCaptureFixtures {
     public static func locations(at now: Date) -> [Ecoponto] {
         let spots: [(id: String, latitude: Double, longitude: Double, address: String)] = [
             ("01", 41.53947, -8.61533, "Rua Dr. Aníbal Araújo, Barcelos"),
-            ("02", 41.53855, -8.61406, "Rua Selles Paes, Barcelos"),
-            ("03", 41.53819, -8.61385, "Bomba Gasolina, Barcelos"),
-            ("04", 41.54007, -8.61540, "Café Estudante, Barcelos"),
-            ("05", 41.53745, -8.61460, "Travessa João Duarte, Barcelos"),
-            ("06", 41.53762, -8.61637, "Escola Gonçalo Nunes, Barcelos"),
-            ("07", 41.54055, -8.61488, "CTT, Barcelos"),
-            ("08", 41.54017, -8.61713, "Pizzaria, Barcelos"),
-            ("09", 41.54084, -8.61624, "Rua Tomé de Sousa, Barcelos"),
-            ("10", 41.53712, -8.61285, "Rua D. Afonso, Barcelos"),
-            ("11", 41.54123, -8.61485, "Rua de Santa Clara, Barcelos"),
-            ("12", 41.53827, -8.61197, "Rotunda da Cabra, Barcelos"),
-            ("13", 41.54131, -8.61386, "Cozinha Nova, Barcelos"),
-            ("14", 41.54031, -8.61211, "Hyundai, Barcelos"),
-            ("15", 41.54149, -8.61679, "Peixaria Novimar, Barcelos"),
-            ("16", 41.53680, -8.61840, "Arcozelo, Barcelos"),
+            ("02", 41.53355, -8.61905, "Rua dos Combatentes da Grande Guerra, Barcelos"),
+            ("03", 41.53748, -8.60667, "Sapataria, Barcelos"),
+            ("04", 41.54484, -8.61046, "Rua de Dom Jaime, Barcelos"),
+            ("05", 41.54545, -8.61872, "Campo de Jogos, Barcelos"),
+            ("06", 41.53766, -8.62684, "Rua do Carregal, Barcelos"),
+            ("07", 41.53115, -8.62815, "Farmacia Cunha, Barcelos"),
+            ("08", 41.53564, -8.59870, "N 205, Barcelos"),
+            ("09", 41.52592, -8.62031, "Café Aquário, Barcelos"),
+            ("10", 41.55256, -8.61857, "Rua da Boela, Barcelos"),
         ]
         return spots.map { spot in
             let id = "capture-barcelos-\(spot.id)"
