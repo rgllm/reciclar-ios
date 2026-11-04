@@ -379,7 +379,8 @@ final class StoreCaptureTests: XCTestCase {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.httpBody = body
-        request.timeoutInterval = 30
+        // simctl status_bar can sit for longer than 30s on a busy runner.
+        request.timeoutInterval = 90
         let state = BridgeState()
         let session = URLSession(configuration: .ephemeral)
         session.dataTask(with: request) { data, response, error in
@@ -391,7 +392,7 @@ final class StoreCaptureTests: XCTestCase {
             }
             state.semaphore.signal()
         }.resume()
-        let wait = state.semaphore.wait(timeout: .now() + 35)
+        let wait = state.semaphore.wait(timeout: .now() + 100)
         session.finishTasksAndInvalidate()
         if wait == .timedOut {
             XCTFail("simctl bridge timed out for \(path)")
