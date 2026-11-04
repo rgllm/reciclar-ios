@@ -10,16 +10,19 @@ final class StoreCaptureTests: XCTestCase {
     override func setUp() {
         super.setUp()
         continueAfterFailure = false
-        grantLocation()
-        setLocation(latitude: 41.5388, longitude: -8.6151)
-        app.launchArguments = [
-            "-StoreScreenshots",
-            "-AppleLanguages", "(pt-PT)",
-            "-AppleLocale", "pt_PT",
-        ]
-        app.launch()
-        acceptSystemPrompts()
-        overrideStatusBar()
+        // XCTest calls setUp off the main actor. The capture helpers touch XCUIApplication.
+        MainActor.assumeIsolated {
+            self.grantLocation()
+            self.setLocation(latitude: 41.5388, longitude: -8.6151)
+            self.app.launchArguments = [
+                "-StoreScreenshots",
+                "-AppleLanguages", "(pt-PT)",
+                "-AppleLocale", "pt_PT",
+            ]
+            self.app.launch()
+            self.acceptSystemPrompts()
+            self.overrideStatusBar()
+        }
     }
 
     func testStoreScreens() {
