@@ -33,22 +33,27 @@ final class StoreCaptureTests: XCTestCase {
         zoomUntilPinsOrGiveUp()
         settle(8)
         overrideStatusBar()
-        assertNoSemLeituraCallout()
         capture("01-mapa")
+
+        showAvailableSpace()
+        settle(2)
+        overrideStatusBar()
+        capture("02-espaco")
+        hideAvailableSpace()
 
         openFirstEcoponto()
         XCTAssertTrue(app.buttons["Reportar problema"].waitForExistence(timeout: 15))
         reveal("Reportar problema")
         settle(1)
         overrideStatusBar()
-        capture("02-ecoponto")
+        capture("03-ecoponto")
 
         revealReportChoices()
         XCTAssertTrue(app.buttons["Lixo fora dos contentores"].waitForExistence(timeout: 15))
         XCTAssertTrue(app.buttons["Vandalizado"].exists)
         settle(1)
         overrideStatusBar()
-        capture("03-reportar")
+        capture("04-reportar")
         closeDetail()
 
         app.tabBars.buttons["Reciclagem"].tap()
@@ -64,7 +69,7 @@ final class StoreCaptureTests: XCTestCase {
         reveal("Fontes")
         settle(1)
         overrideStatusBar()
-        capture("04-guia")
+        capture("05-guia")
 
         app.buttons["Ver no mapa"].tap()
         XCTAssertTrue(search.waitForExistence(timeout: 15))
@@ -75,15 +80,14 @@ final class StoreCaptureTests: XCTestCase {
         XCTAssertTrue(glassFilter.waitForExistence(timeout: 15), "the glass filter chip was not selected")
         settle(6)
         overrideStatusBar()
-        assertNoSemLeituraCallout()
-        capture("05-guia-mapa")
+        capture("06-guia-mapa")
 
         app.tabBars.buttons["Estatísticas"].tap()
         XCTAssertTrue(app.staticTexts["Ecopontos"].waitForExistence(timeout: 30))
         XCTAssertTrue(app.staticTexts["Total"].waitForExistence(timeout: 20))
         settle(1)
         overrideStatusBar()
-        capture("06-estatisticas")
+        capture("07-estatisticas")
 
         app.tabBars.buttons["Mapa"].tap()
         clearFiltersIfNeeded()
@@ -94,7 +98,58 @@ final class StoreCaptureTests: XCTestCase {
         )
         settle(2)
         overrideStatusBar()
-        capture("07-sem-cobertura")
+        capture("08-sem-cobertura")
+    }
+
+    /// Map filtered to ecopontos with a recent reading under 90%. Barcelos is the capture area.
+    private func showAvailableSpace() {
+        let chip = spaceFilterChip()
+        XCTAssertTrue(chip.waitForExistence(timeout: 15), "the space filter was not in the map chrome")
+        revealFilterChip(chip)
+        XCTAssertTrue(chip.isHittable, "the space filter stayed off screen")
+        chip.tap()
+        XCTAssertTrue(
+            waitUntil(timeout: 5) { self.spaceFilterChip().isSelected },
+            "the space filter did not stay selected"
+        )
+        if !waitForSpacePin(timeout: 15) {
+            zoomUntilPinsOrGiveUp()
+        }
+        XCTAssertTrue(waitForSpacePin(timeout: 25), "no pin with available space was visible in Barcelos")
+    }
+
+    private func hideAvailableSpace() {
+        let chip = spaceFilterChip()
+        guard chip.exists else { return }
+        if chip.isSelected {
+            revealFilterChip(chip)
+            chip.tap()
+        }
+        _ = waitUntil(timeout: 10) { !self.spaceFilterChip().isSelected }
+    }
+
+    private func spaceFilterChip() -> XCUIElement {
+        app.buttons.matching(NSPredicate(format: "label == %@", "Com espaço")).firstMatch
+    }
+
+    private func revealFilterChip(_ chip: XCUIElement) {
+        var attempts = 0
+        while !chip.isHittable, attempts < 8 {
+            let filters = app.descendants(matching: .any)["Filtros de resíduos"]
+            let bar = filters.exists ? filters : app.scrollViews.element(boundBy: 0)
+            if bar.exists {
+                let start = bar.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.5))
+                let end = bar.coordinate(withNormalizedOffset: CGVector(dx: 0.15, dy: 0.5))
+                start.press(forDuration: 0.05, thenDragTo: end)
+            }
+            attempts += 1
+        }
+    }
+
+    private func waitForSpacePin(timeout: TimeInterval) -> Bool {
+        waitUntil(timeout: timeout) {
+            self.element(containing: "Com espaço disponível").exists
+        }
     }
 
     private func openPlace(_ name: String) {
@@ -294,7 +349,18 @@ final class StoreCaptureTests: XCTestCase {
         XCTAssertFalse(callout.exists, "a Sem leitura label is visible")
     }
 
+    private func assertNoOperatorProvenance() {
+        for name in ["Resulima", "Linha da Reciclagem"] {
+            let match = app.descendants(matching: .any).matching(
+                NSPredicate(format: "label CONTAINS %@", name)
+            ).firstMatch
+            XCTAssertFalse(match.exists, "\(name) is visible")
+        }
+    }
+
     private func capture(_ name: String) {
+        assertNoSemLeituraCallout()
+        assertNoOperatorProvenance()
         let shot = XCUIScreen.main.screenshot()
         let attachment = XCTAttachment(screenshot: shot)
         attachment.name = name
