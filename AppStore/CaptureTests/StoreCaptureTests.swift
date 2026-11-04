@@ -3,26 +3,24 @@ import XCTest
 
 /// Release captures of the installed app against the production API.
 /// Community reports are opened and never submitted.
-@MainActor
+/// Not `@MainActor`: XCTest calls `setUp` as a nonisolated override, and a
+/// main-actor class makes those calls a strict-concurrency error.
 final class StoreCaptureTests: XCTestCase {
     private let app = XCUIApplication()
 
     override func setUp() {
         super.setUp()
         continueAfterFailure = false
-        // XCTest calls setUp off the main actor. The capture helpers touch XCUIApplication.
-        MainActor.assumeIsolated {
-            self.grantLocation()
-            self.setLocation(latitude: 41.5388, longitude: -8.6151)
-            self.app.launchArguments = [
-                "-StoreScreenshots",
-                "-AppleLanguages", "(pt-PT)",
-                "-AppleLocale", "pt_PT",
-            ]
-            self.app.launch()
-            self.acceptSystemPrompts()
-            self.overrideStatusBar()
-        }
+        grantLocation()
+        setLocation(latitude: 41.5388, longitude: -8.6151)
+        app.launchArguments = [
+            "-StoreScreenshots",
+            "-AppleLanguages", "(pt-PT)",
+            "-AppleLocale", "pt_PT",
+        ]
+        app.launch()
+        acceptSystemPrompts()
+        overrideStatusBar()
     }
 
     func testStoreScreens() {
