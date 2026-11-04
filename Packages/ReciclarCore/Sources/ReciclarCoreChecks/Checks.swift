@@ -1338,8 +1338,8 @@ func runStoreCaptureChecks(
         Ecoponto(
             id: id,
             coordinate: barcelos,
-            locality: "Barcelos",
             municipality: "Barcelos",
+            locality: "Barcelos",
             containers: (0..<containers).map { index in
                 Container(id: "\(id)-\(index)", category: .sampleGlass, fillReading: reading)
             },
