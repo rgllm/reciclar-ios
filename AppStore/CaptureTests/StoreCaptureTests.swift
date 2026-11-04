@@ -45,7 +45,6 @@ final class StoreCaptureTests: XCTestCase {
         settle(2)
         overrideStatusBar()
         capture("02-espaco")
-        hideAvailableSpace()
 
         openFirstEcoponto()
         XCTAssertTrue(app.buttons["Reportar problema"].waitForExistence(timeout: 15))
@@ -209,8 +208,10 @@ final class StoreCaptureTests: XCTestCase {
     }
 
     private func zoomUntilPinsOrGiveUp() {
-        for _ in 0..<6 {
-            if element(containing: "contentor").exists { return }
+        for _ in 0..<5 {
+            if !element(containing: "Grupo de").exists, element(containing: "contentor").exists {
+                return
+            }
             let map = app.maps.firstMatch
             if map.exists { map.pinch(withScale: 2.0, velocity: 1) }
             settle(1.5)
