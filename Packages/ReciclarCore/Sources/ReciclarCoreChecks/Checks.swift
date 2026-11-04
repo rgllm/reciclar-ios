@@ -1324,6 +1324,7 @@ func expectUnlinkedSubmission(
     }
 }
 
+@MainActor
 func runStoreCaptureChecks(
     now: Date,
     expect: (Bool, String) -> Void,
