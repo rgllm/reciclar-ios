@@ -1429,10 +1429,31 @@ func runStoreCaptureChecks(
 
         let tile = SlippyMapTiles.tile(containing: barcelos, zoom: MapTilePolicy.zoom)
         let tilePage = try await client.fetchTile(tile, cursor: nil)
+        expect(!tilePage.page.hasMore, "the Barcelos capture tile does not page the live catalogue")
+        expect(
+            tilePage.page.locations.contains { $0.id == "capture-barcelos-01" },
+            "the Barcelos capture tile serves the real centre point"
+        )
         expect(
             tilePage.page.locations.allSatisfy { $0.provenance.userFacingLabel == nil },
             "tile capture hides the operator"
         )
+        expect(
+            tilePage.page.locations.allSatisfy { location in
+                location.containers.allSatisfy {
+                    FillReadingPolicy.evidence(from: $0.fillReading, at: now) != .none
+                }
+            },
+            "every capture container has a recent reading"
+        )
+        let beja = SlippyMapTiles.tile(
+            containing: Coordinate(latitude: 38.015, longitude: -7.865),
+            zoom: MapTilePolicy.zoom
+        )
+        let emptyTile = try await client.fetchTile(beja, cursor: nil)
+        expect(emptyTile.page.locations.isEmpty, "a capture tile outside Barcelos is empty")
+        let events = try await client.fetchCommunityEvents(bounds: bounds)
+        expect(events.events.isEmpty, "capture does not wait on community events")
 
         let stats = try await client.fetchStats()
         expect(stats.locations.total == 12_480, "capture client leaves statistics on the upstream")
