@@ -28,12 +28,13 @@ final class StoreCaptureTests: XCTestCase {
         let search = app.buttons["Pesquisar lugar ou morada"]
         XCTAssertTrue(search.waitForExistence(timeout: 40), "the map chrome did not appear")
         openPlace("Barcelos")
-        if !waitForMapContent(timeout: 50) {
+        if !waitForLoadedPins(timeout: 50) {
             openPlace("Braga")
-            XCTAssertTrue(waitForMapContent(timeout: 50), "no ecopontos appeared in Barcelos or Braga")
+            XCTAssertTrue(waitForLoadedPins(timeout: 50), "no ecopontos appeared in Barcelos or Braga")
         }
         zoomUntilPinsOrGiveUp()
-        settle(8)
+        XCTAssertTrue(waitForLoadedPins(timeout: 20), "the map was still loading when the first shot was due")
+        settle(2)
         overrideStatusBar()
         capture("01-mapa")
 
@@ -108,6 +109,7 @@ final class StoreCaptureTests: XCTestCase {
     /// switch in the filter sheet is used instead. The sheet is closed before the capture.
     private func showAvailableSpace() {
         setSpaceFilter(enabled: true)
+        _ = waitUntil(timeout: 20) { !self.element(containing: "A carregar ecopontos").exists }
         if !waitForSpacePin(timeout: 15) {
             zoomUntilPinsOrGiveUp()
         }
@@ -188,19 +190,28 @@ final class StoreCaptureTests: XCTestCase {
         }
     }
 
-    private func waitForMapContent(timeout: TimeInterval) -> Bool {
+    /// Pins or clusters from the API. The "Com espaço" chip is always on screen, so it is not a signal.
+    private func waitForLoadedPins(timeout: TimeInterval) -> Bool {
         waitUntil(timeout: timeout) {
-            self.element(containing: "contentor").exists
+            if self.element(containing: "A carregar ecopontos").exists { return false }
+            return self.element(containing: "contentor").exists
                 || self.element(containing: "Grupo de").exists
-                || self.element(containing: "Com espaço").exists
         }
     }
 
+    private func waitForMapContent(timeout: TimeInterval) -> Bool {
+        waitForLoadedPins(timeout: timeout)
+    }
+
     private func zoomUntilPinsOrGiveUp() {
-        for _ in 0..<6 {
+        for _ in 0..<3 {
             if element(containing: "contentor").exists { return }
+            if element(containing: "A carregar ecopontos").exists {
+                _ = waitUntil(timeout: 10) { !self.element(containing: "A carregar ecopontos").exists }
+                continue
+            }
             let map = app.maps.firstMatch
-            if map.exists { map.pinch(withScale: 2.0, velocity: 1) }
+            if map.exists { map.pinch(withScale: 1.5, velocity: 0.6) }
             settle(2)
         }
     }
