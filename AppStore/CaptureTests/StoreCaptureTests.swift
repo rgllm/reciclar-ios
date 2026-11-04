@@ -104,16 +104,10 @@ final class StoreCaptureTests: XCTestCase {
     }
 
     /// Map filtered to ecopontos with a recent reading under 90%. Barcelos is the capture area.
+    /// The chip can sit off the filter bar, where XCTest cannot resolve a hit point, so the
+    /// switch in the filter sheet is used instead. The sheet is closed before the capture.
     private func showAvailableSpace() {
-        let chip = spaceFilterChip()
-        XCTAssertTrue(chip.waitForExistence(timeout: 15), "the space filter was not in the map chrome")
-        revealFilterChip(chip)
-        XCTAssertTrue(chip.isHittable, "the space filter stayed off screen")
-        chip.tap()
-        XCTAssertTrue(
-            waitUntil(timeout: 5) { self.spaceFilterChip().isSelected },
-            "the space filter did not stay selected"
-        )
+        setSpaceFilter(enabled: true)
         if !waitForSpacePin(timeout: 15) {
             zoomUntilPinsOrGiveUp()
         }
@@ -121,31 +115,22 @@ final class StoreCaptureTests: XCTestCase {
     }
 
     private func hideAvailableSpace() {
-        let chip = spaceFilterChip()
-        guard chip.exists else { return }
-        if chip.isSelected {
-            revealFilterChip(chip)
-            chip.tap()
-        }
-        _ = waitUntil(timeout: 10) { !self.spaceFilterChip().isSelected }
+        setSpaceFilter(enabled: false)
     }
 
-    private func spaceFilterChip() -> XCUIElement {
-        app.buttons.matching(NSPredicate(format: "label == %@", "Com espaço")).firstMatch
-    }
-
-    private func revealFilterChip(_ chip: XCUIElement) {
-        var attempts = 0
-        while !chip.isHittable, attempts < 8 {
-            let filters = app.descendants(matching: .any)["Filtros de resíduos"]
-            let bar = filters.exists ? filters : app.scrollViews.element(boundBy: 0)
-            if bar.exists {
-                let start = bar.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.5))
-                let end = bar.coordinate(withNormalizedOffset: CGVector(dx: 0.15, dy: 0.5))
-                start.press(forDuration: 0.05, thenDragTo: end)
-            }
-            attempts += 1
+    private func setSpaceFilter(enabled: Bool) {
+        app.buttons["Mais filtros"].tap()
+        let toggle = app.switches["Com espaço"]
+        XCTAssertTrue(toggle.waitForExistence(timeout: 10), "the space switch was not in the filter sheet")
+        let raw = (toggle.value as? String)?.lowercased() ?? ""
+        let isOn = raw == "1" || raw == "on" || raw == "true"
+        if isOn != enabled {
+            toggle.tap()
         }
+        let close = app.buttons["Fechar"]
+        XCTAssertTrue(close.waitForExistence(timeout: 5))
+        close.tap()
+        XCTAssertTrue(app.buttons["Pesquisar lugar ou morada"].waitForExistence(timeout: 10))
     }
 
     private func waitForSpacePin(timeout: TimeInterval) -> Bool {
