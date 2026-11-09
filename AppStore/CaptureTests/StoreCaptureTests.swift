@@ -13,6 +13,41 @@ final class StoreCaptureTests: XCTestCase {
         continueAfterFailure = false
     }
 
+    func testCachedFavouriteSurvivesLaunch() {
+        grantLocation()
+        setLocation(latitude: 41.5388, longitude: -8.6151)
+        app.launchArguments = ["-StoreScreenshots", "-AppleLanguages", "(pt-PT)", "-AppleLocale", "pt_PT"]
+        app.launch()
+        acceptSystemPrompts()
+        XCTAssertTrue(app.buttons["Pesquisar lugar ou morada"].waitForExistence(timeout: 15))
+        app.buttons["A minha posição"].tap()
+        XCTAssertTrue(waitForLoadedPins(timeout: 60))
+        openFirstEcoponto()
+        let remove = app.buttons["Remover dos favoritos"]
+        if remove.exists { remove.tap() }
+        let add = app.buttons["Adicionar aos favoritos"]
+        XCTAssertTrue(add.waitForExistence(timeout: 10))
+        add.tap()
+        XCTAssertTrue(remove.waitForExistence(timeout: 10))
+        closeDetail()
+        app.terminate()
+
+        app.launch()
+        XCTAssertTrue(app.buttons["Pesquisar lugar ou morada"].waitForExistence(timeout: 15))
+        // Exercise map re-entry before opening the persisted favourite.
+        app.tabBars.buttons["Reciclagem"].tap()
+        XCTAssertTrue(app.searchFields["Onde deito isto?"].waitForExistence(timeout: 10))
+        app.tabBars.buttons["Mapa"].tap()
+        app.buttons["Favoritos"].tap()
+        XCTAssertTrue(app.navigationBars["Favoritos"].waitForExistence(timeout: 10))
+        let favourite = app.cells.firstMatch
+        XCTAssertTrue(favourite.waitForExistence(timeout: 20))
+        favourite.tap()
+        XCTAssertTrue(remove.waitForExistence(timeout: 15), "the cached favourite did not reopen on the map")
+        remove.tap()
+        XCTAssertTrue(add.waitForExistence(timeout: 10))
+    }
+
     func testStoreScreens() {
         grantLocation()
         setLocation(latitude: 41.5388, longitude: -8.6151)

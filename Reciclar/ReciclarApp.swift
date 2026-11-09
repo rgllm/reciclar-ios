@@ -3,6 +3,7 @@ import SwiftUI
 @main
 struct ReciclarApp: App {
     @State private var model: AppModel
+    @State private var firstFramePresented = false
     @Environment(\.scenePhase) private var scenePhase
 
     init() {
@@ -21,16 +22,21 @@ struct ReciclarApp: App {
             RootTabView()
                 .environment(model)
                 .environment(\.locale, Locale(identifier: "pt_PT"))
-                .background { FirstFrameObserver(onFirstFrame: {}) }
-                .task {
+                .background {
+                    FirstFrameObserver { firstFramePresented = true }
+                }
+                .task(id: firstFramePresented) {
+                    guard firstFramePresented else { return }
                     await model.start()
-                    while !Task.isCancelled {
-                        do { try await Task.sleep(for: .seconds(60)) } catch { return }
-                        if scenePhase == .active { await model.refreshIfNeeded() }
-                    }
                 }
                 .task(id: scenePhase) {
                     model.setSceneActive(scenePhase == .active)
+                    guard scenePhase == .active else { return }
+                    while !Task.isCancelled {
+                        do { try await Task.sleep(for: .seconds(60)) } catch { return }
+                        guard !Task.isCancelled else { return }
+                        await model.refreshIfNeeded()
+                    }
                 }
                 .onChange(of: model.locationService.authorization) { _, _ in
                     if model.locationService.showsUserLocation {
