@@ -6,6 +6,7 @@ struct ReciclarApp: App {
     @Environment(\.scenePhase) private var scenePhase
 
     init() {
+        _ = LaunchMeasurement.shared
         let locationService = UserLocationService()
         _model = State(
             initialValue: AppModel(
@@ -20,6 +21,7 @@ struct ReciclarApp: App {
             RootTabView()
                 .environment(model)
                 .environment(\.locale, Locale(identifier: "pt_PT"))
+                .background { FirstFrameObserver(onFirstFrame: {}) }
                 .task {
                     await model.start()
                     while !Task.isCancelled {
