@@ -13,7 +13,11 @@ enum AppTab: Hashable {
 @MainActor
 @Observable
 final class AppModel {
-    var selectedTab: AppTab = .map
+    var selectedTab: AppTab = .map {
+        didSet {
+            if selectedTab != oldValue { restartFreshnessTracking() }
+        }
+    }
     var snapshot = LocationSnapshot()
     var filter = LocationFilter()
     var selectedLocationID: Ecoponto.ID?
@@ -119,19 +123,16 @@ final class AppModel {
 
     func start() async {
         guard !cacheReady else { return }
-        // The map is already installed. Yield so that frame can commit before
-        // favourites and the location cache are decoded.
-        await Task.yield()
         await dependencies.favourites.load()
         favouriteIDs = await dependencies.favourites.identifiers()
         await dependencies.repository.protectFavourites(Set(favouriteIDs))
         await dependencies.repository.loadCache()
         await adoptIdentityRenames()
         await applySnapshot(fitIfNeeded: true)
-        restartFreshnessTracking()
         await dependencies.stats.loadCache()
         await applyStatistics()
         cacheReady = true
+        restartFreshnessTracking()
         if snapshot.isFixtureData, let first = snapshot.locations.first { chooseArea(first.coordinate) }
         viewportChanged()
         if !snapshot.isFixtureData { await centreOnUser() }
@@ -190,7 +191,7 @@ final class AppModel {
         }
     }
 
-    /// While the scene is active, wake at the next fill or report change, and at least every minute.
+    /// While the map is visible, wake at the next fill or report change, at most once a minute.
     private func trackFreshness() async {
         if freshnessNotBefore == .distantFuture {
             freshnessNotBefore = .distantPast
@@ -220,8 +221,9 @@ final class AppModel {
     }
 
     private func restartFreshnessTracking() {
-        guard sceneIsActive else { return }
         freshnessTask?.cancel()
+        freshnessTask = nil
+        guard sceneIsActive, cacheReady, selectedTab == .map else { return }
         freshnessTask = Task { [weak self] in
             await self?.trackFreshness()
         }
